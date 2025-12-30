@@ -55,8 +55,8 @@ All credit for the original project goes to the ATS-MINI author.
 ## Screenshots
 
 ### ATS-MINI Screen
-![ATS-MINI Screen](images/ATS-Mini_screen.png)
+<img src="images/ATS-Mini_screen.png" width="300">
 
 ### Web UI
-![Web UI](images/Web_UI.png)
+<img src="images/Web_UI.png" width="300">
 
