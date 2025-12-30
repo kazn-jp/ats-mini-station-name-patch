@@ -1,4 +1,6 @@
 # Manual Station Name Assignment Patch for ATS-MINI
+> This is a small, Japan-specific patch for ATS-MINI v2.30, shared as a patch file only.
+> All credit for the original ATS-MINI project goes to its author.
 
 This is a personal modification for the ATS-MINI project (v2.30),
 intended for Japan-specific broadcast conditions.
