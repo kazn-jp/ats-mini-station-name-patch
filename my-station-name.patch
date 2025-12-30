@@ -1,0 +1,980 @@
+diff --git a/ats-mini/Draw.cpp b/ats-mini/Draw.cpp
+index 9a88b38..9f9ff80 100644
+--- a/ats-mini/Draw.cpp
++++ b/ats-mini/Draw.cpp
+@@ -255,8 +255,8 @@ void drawFrequency(uint32_t freq, int x, int y, int ux, int uy, uint8_t hl)
+ void drawScale(uint32_t freq)
+ {
+   // Scale pointer
+-  spr.fillTriangle(156, 120, 160, 130, 164, 120, TH.scale_pointer);
+-  spr.drawLine(160, 130, 160, 169, TH.scale_pointer);
++  spr.fillTriangle(156, 127, 160, 135, 164, 127, TH.scale_pointer); // original spr.fillTriangle(156, 120, 160, 130, 164, 120, TH.scale_pointer);
++  spr.drawLine(160, 135, 160, 169, TH.scale_pointer);               // original spr.drawLine(160, 130, 160, 169, TH.scale_pointer);
+ 
+   spr.setTextDatum(MC_DATUM);
+   spr.setTextColor(TH.scale_text, TH.bg);
+@@ -337,11 +337,42 @@ void drawStereoIndicator(int x, int y, bool stereo)
+ //
+ // Draw RDS station name (also CB channel, etc)
+ //
++//void drawStationName(const char *name, int x, int y)
++//{
++//  spr.setTextDatum(TC_DATUM);
++//  spr.setTextColor(TH.rds_text, TH.bg);
++//  spr.drawString(name, x, y, 4);
++//}
++
++//
++// Draw my-station-name (2 lines with comma separator)
++//
+ void drawStationName(const char *name, int x, int y)
+ {
+-  spr.setTextDatum(TC_DATUM);
+   spr.setTextColor(TH.rds_text, TH.bg);
+-  spr.drawString(name, x, y, 4);
++  spr.setTextDatum(TL_DATUM);
++
++  const int lineHeight = 15;
++  char line1[80] = {0};
++  char line2[80] = {0};
++  const char *space = strchr(name, ',');
++
++  if (space != NULL)
++  {
++    int len1 = space - name;
++    strncpy(line1, name, len1);
++    line1[len1] = '\0';
++    strcpy(line2, space + 1);
++  }
++  else
++  {
++    strcpy(line1, name);
++  }
++  spr.drawString(line1, x-60, y-1, 2);
++  if (strlen(line2) > 0)
++  {
++    spr.drawString(line2, x-60, y+1 + lineHeight, 2);
++  }
+ }
+ 
+ //
+diff --git a/ats-mini/Network.cpp b/ats-mini/Network.cpp
+index b9b682a..f720ea7 100644
+--- a/ats-mini/Network.cpp
++++ b/ats-mini/Network.cpp
+@@ -12,6 +12,15 @@
+ #include <NTPClient.h>
+ #include <ESPmDNS.h>
+ 
++//
++// my-station-name
++//
++#include <FS.h>
++#include <LittleFS.h>
++#include "Station.h"
++#include <ArduinoJson.h>
++extern const char EDIT_HTML[];
++
+ #define CONNECT_TIME  3000  // Time of inactivity to start connecting WiFi
+ 
+ //
+@@ -330,6 +339,251 @@ static void webInit()
+   // This method saves configuration form contents
+   server.on("/setconfig", HTTP_ANY, webSetConfig);
+ 
++  //
++  // for Station info
++  //
++  server.on("/edit", HTTP_GET, [](AsyncWebServerRequest *request)
++  {
++    // =========================
++    // dial freq（kHz）
++    // =========================
++    uint32_t dialFreq = getCurrentFrequency();   //
++    String freqKey = String(dialFreq);
++
++    const char* band = getCurrentBandName();     // "AM" / "FM" / "SSB"
++
++    // =========================
++    // get band object
++    // =========================
++    JsonObject bandObj;
++    if (!stationDoc.containsKey(band)) {
++        bandObj = stationDoc.createNestedObject(band);
++    } else {
++        bandObj = stationDoc[band].as<JsonObject>();
++    }
++
++    // =========================
++    // get freq entry
++    // =========================
++    JsonObject st;
++    if (!bandObj.containsKey(freqKey)) {
++        st = bandObj.createNestedObject(freqKey);
++        st["name"]    = "";
++        st["comment"] = "";
++    } else {
++        st = bandObj[freqKey].as<JsonObject>();
++    }
++
++    const char* name    = st["name"]    | "";
++    const char* comment = st["comment"] | "";
++
++    // =========================
++    // HTML
++    // =========================
++    String body = EDIT_HTML;
++
++    // for display
++    body.replace("{{FREQ}}", String(dialFreq));  // kHz
++    body.replace("{{NAME}}", name);
++    body.replace("{{COMMENT}}", comment);
++
++    request->send(200, "text/html", webPage(body));
++  });
++
++  server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest *request){
++    uint32_t freq = getCurrentFrequency();   // kHz
++    String freqKey = String(freq);
++
++    const char* band = getCurrentBandName(); // "FM" / "AM" / "SSB"
++
++    String name = "";
++    String comment = "";
++
++    if (stationDoc.containsKey(band)) {
++      JsonObject bandObj = stationDoc[band];
++      if (bandObj.containsKey(freqKey)) {
++        JsonObject st = bandObj[freqKey];
++        name    = st["name"]    | "";
++        comment = st["comment"] | "";
++      }
++    }
++
++    StaticJsonDocument<256> resp;
++
++    //
++    resp["freq"] = freq;                       // kHz
++    resp["band"] = band;                       // "FM","AM","SSB"
++    resp["mode"] = bandModeDesc[currentMode];  // "USB","LSB","AM","FM"
++    resp["bfo"]  = currentBFO;                 // Hz
++
++    // --- station info ---
++    resp["name"]    = name;
++    resp["comment"] = comment;
++
++    String json;
++    serializeJson(resp, json);
++    request->send(200, "application/json", json);
++  });
++
++  server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request){
++    uint32_t freq = getCurrentFrequency();
++    String freqKey = String(freq);
++    const char* band = getCurrentBandName();
++
++    String name = "";
++    String comment = "";
++
++    if (stationDoc.containsKey(band)) {
++      JsonObject bandObj = stationDoc[band];
++      if (bandObj.containsKey(freqKey)) {
++        JsonObject st = bandObj[freqKey];
++        name    = st["name"]    | "";
++        comment = st["comment"] | "";
++      }
++    }
++
++    StaticJsonDocument<256> resp;
++    resp["freq"] = freq;
++    resp["name"] = name;
++    resp["comment"] = comment;
++
++    String json;
++    serializeJson(resp, json);
++    request->send(200, "application/json", json);
++  });
++
++  server.on("/save", HTTP_POST, [](AsyncWebServerRequest *request)
++  {
++    // -----------------------------
++    // POST parameter
++    // -----------------------------
++    if (!request->hasParam("name", true) ||
++        !request->hasParam("comment", true)) {
++        request->send(400, "text/plain", "Bad Request");
++        return;
++    }
++
++    String name    = request->getParam("name", true)->value();
++    String comment = request->getParam("comment", true)->value();
++
++    // -----------------------------
++    // freq
++    // -----------------------------
++    uint32_t dialFreq = getCurrentFrequency();   // kHz
++    String freqKey = String(dialFreq);
++
++    // -----------------------------
++    // band name
++    // -----------------------------
++    const char* band = getCurrentBandName();     // "AM" / "FM" / "SSB"
++
++    // -----------------------------
++    // get band object
++    // -----------------------------
++    JsonObject bandObj;
++    if (!stationDoc.containsKey(band)) {
++        bandObj = stationDoc.createNestedObject(band);
++    } else {
++        bandObj = stationDoc[band].as<JsonObject>();
++    }
++
++    // -----------------------------
++    // get freq entry
++    // -----------------------------
++    JsonObject st;
++    if (!bandObj.containsKey(freqKey)) {
++        st = bandObj.createNestedObject(freqKey);
++    } else {
++        st = bandObj[freqKey];
++    }
++
++    st["name"]    = name;
++    st["comment"] = comment;
++
++    // -----------------------------
++    // save to flash
++    // -----------------------------
++    fs::File f = LittleFS.open("/stations.json", "w");
++    if (f) {
++        serializeJsonPretty(stationDoc, f);
++
++        f.close();
++    }
++
++    // -----------------------------
++    // rebuild cache
++    // -----------------------------
++    buildStationCache();
++
++    // -----------------------------
++    // /edit
++    // -----------------------------
++    request->redirect("/edit");
++  });
++
++  server.on("/download", HTTP_GET, [](AsyncWebServerRequest *request) {
++    if (!LittleFS.exists("/stations.json")) {
++        request->send(404, "text/plain", "stations.json not found");
++        return;
++    }
++
++    request->send(
++        LittleFS,
++        "/stations.json",
++        "application/json"
++    );
++  });
++
++  server.on(
++    "/upload",
++    HTTP_POST,
++    [](AsyncWebServerRequest *request) {
++      // POST done
++      request->redirect("/edit");
++    },
++    [](AsyncWebServerRequest *request,
++       String filename,
++       size_t index,
++       uint8_t *data,
++       size_t len,
++       bool final) {
++
++      static fs::File uploadFile;
++
++      // ---- start upload ----
++      if (index == 0) {
++        Serial.printf("Upload start: %s\n", filename.c_str());
++
++        if (filename != "stations.json") {
++          Serial.println("Invalid filename");
++          return;
++        }
++
++        uploadFile = LittleFS.open("/stations.json", "w");
++        if (!uploadFile) {
++          Serial.println("Failed to open file for writing");
++          return;
++        }
++      }
++
++      // ---- recive data ----
++      if (uploadFile) {
++        uploadFile.write(data, len);
++      }
++
++      // ---- upload done ----
++      if (final) {
++        if (uploadFile) {
++          uploadFile.close();
++          Serial.println("Upload complete");
++          loadStationsOnce();
++          buildStationCache();
++
++        }
++      }
++    }
++  );
++
+   // Start web server
+   server.begin();
+ }
+@@ -548,7 +802,7 @@ static const String webRadioPage()
+   return webPage(
+ "<H1>ATS-Mini Pocket Receiver</H1>"
+ "<P ALIGN='CENTER'>"
+-  "<A HREF='/memory'>Memory</A>&nbsp;|&nbsp;<A HREF='/config'>Config</A>"
++  "<A HREF='/memory'>Memory</A>&nbsp;|&nbsp;<A HREF='/config'>Config</A>&nbsp;|&nbsp;<A HREF='/edit'>Station info</A>"
+ "</P>"
+ "<TABLE COLUMNS=2>"
+ "<TR>"
+@@ -611,7 +865,7 @@ static const String webMemoryPage()
+   return webPage(
+ "<H1>ATS-Mini Pocket Receiver Memory</H1>"
+ "<P ALIGN='CENTER'>"
+-  "<A HREF='/'>Status</A>&nbsp;|&nbsp;<A HREF='/config'>Config</A>"
++  "<A HREF='/'>Status</A>&nbsp;|&nbsp;<A HREF='/config'>Config</A>&nbsp;|&nbsp;<A HREF='/edit'>Station info</A>"
+ "</P>"
+ "<TABLE COLUMNS=2>" + items + "</TABLE>"
+ );
+@@ -632,7 +886,7 @@ const String webConfigPage()
+ "<H1>ATS-Mini Config</H1>"
+ "<P ALIGN='CENTER'>"
+   "<A HREF='/'>Status</A>"
+-  "&nbsp;|&nbsp;<A HREF='/memory'>Memory</A>"
++  "&nbsp;|&nbsp;<A HREF='/memory'>Memory</A>&nbsp;|&nbsp;<A HREF='/edit'>Station info</A>"
+ "</P>"
+ "<FORM ACTION='/setconfig' METHOD='POST'>"
+   "<TABLE COLUMNS=2>"
+@@ -702,3 +956,226 @@ const String webConfigPage()
+ "</FORM>"
+ );
+ }
++
++//
++// for Station info
++//
++void saveStationsToFlash()
++{
++    fs::File f = LittleFS.open("/stations.json", "w");
++    if (!f) return;
++
++    serializeJson(stationDoc, f);
++    f.close();
++}
++
++const char EDIT_HTML[] PROGMEM = R"rawliteral(
++<h2>Station Info</h2>
++<P ALIGN='CENTER'>
++  <A HREF='/'>Status</A>
++  &nbsp;|&nbsp;<A HREF='/memory'>Memory</A>&nbsp;|&nbsp;<A HREF='/edit'>Station info</A>
++</P>
++
++<div class="freq-block">
++
++  <div class="display-line">
++    <span id="mode" class="mode-value">--</span>
++    &nbsp;
++    <span id="effective" class="display-value">--</span>
++  </div>
++
++  <div class="base-line">
++    <span id="dial" class="base-value">--</span>
++  </div>
++
++</div>
++
++
++<!-- ========================= -->
++<!-- my-station-name save form -->
++<!-- ========================= -->
++<form method="POST" action="/save" class="station-form">
++
++<label>
++Station Name: (max 50 chars, comma -> 2 lines)<br>
++  <input type="text" name="name" size="20" class="station-name">
++</label>
++<br>
++
++<label>
++  Comment:<br>
++  <textarea name="comment" rows="6" class="station-comment"></textarea>
++</label>
++<br>
++
++<button type="submit">Save</button>
++</form>
++
++<!-- ========================= -->
++<!-- JSON Download -->
++<!-- ========================= -->
++<br><br><br><br>
++<!-- Download stations.json<br>  -->
++<button type="button" onclick="downloadStations()">
++  Download stations.json
++</button>
++
++<script>
++function downloadStations() {
++  window.location.href = "/download";
++}
++</script>
++
++<!-- ========================= -->
++<!-- JSON Upload -->
++<!-- ========================= -->
++<br>
++<!-- Import stations.json<br> -->
++
++<form method="POST" action="/upload" enctype="multipart/form-data">
++  <button type="submit">Upload stations.json</button>
++  <input type="file" name="jsonfile" accept=".json">
++</form>
++
++<style>
++/* =========================
++   Frequency display
++   ========================= */
++.freq-block {
++  margin: 12px 0;
++  text-align: center;
++}
++
++/* Mode */
++.mode-line {
++  font-size: 1.1em;
++  font-weight: bold;
++  margin-bottom: 6px;
++}
++.mode-value {
++  margin-left: 6px;
++}
++
++/* Tuned Frequency*/
++.display-line {
++  font-size: 2.0em;
++  font-weight: bold;
++  margin: 6px 0;
++}
++
++/* Reference Frequency */
++.base-line {
++  font-size: 0.9em;
++  color: #888;
++}
++
++/* =========================
++   Form layout
++   ========================= */
++.station-form {
++  margin-top: 16px;
++}
++
++/* Station name: 20 chars */
++.station-name {
++  font-size: 1em;
++}
++
++/* Comment:*/
++.station-comment {
++  width: 100%;
++  box-sizing: border-box;
++  font-size: 1em;
++}
++</style>
++
++<script>
++// =========================
++// display freq
++// =========================
++function formatFreqWithComma(freqStr) {
++  const match = freqStr.match(/^([\d.]+)\s*(kHz|Hz|MHz)$/);
++  if (!match) return freqStr;
++
++  const number = match[1];
++  const unit   = match[2];
++
++  const parts = number.split(".");
++  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
++
++  return parts.join(".") + " " + unit;
++}
++
++// =========================
++// edit flag
++// =========================
++let editingName = false;
++let editingComment = false;
++
++document.addEventListener("DOMContentLoaded", () => {
++  const nameInput = document.querySelector('input[name="name"]');
++  const commentInput = document.querySelector('textarea[name="comment"]');
++
++  nameInput.addEventListener("input", () => editingName = true);
++  commentInput.addEventListener("input", () => editingComment = true);
++
++  setInterval(updateStation, 1000);
++  updateStation();
++});
++
++// =========================
++// main update
++// =========================
++function updateStation() {
++  fetch('/api/status')
++    .then(r => r.json())
++    .then(data => {
++
++      // ---- Mode ----
++      document.querySelector('#mode').innerText = data.mode || "-";
++
++      // ---- Reference ----
++      let refText;
++      if (data.band === "FM") {
++        refText = (data.freq / 100).toFixed(2) + " MHz";
++      } else {
++        refText = data.freq.toFixed(3) + " kHz";
++      }
++
++      // ---- Tuned ----
++      let tunedText = refText;
++      let bfoInfo = "";
++
++      if (data.mode === "USB" || data.mode === "LSB") {
++        let effHz = data.freq * 1000 + data.bfo;
++        tunedText = (effHz / 1000).toFixed(3) + " kHz";
++
++        let bfokHz = data.bfo / 1000;
++        bfoInfo =
++          "  BFO " +
++          (bfokHz >= 0 ? "+" : "") +
++          bfokHz.toFixed(3) + " kHz";
++      }
++
++      //document.querySelector('#effective').innerText = tunedText;
++      document.querySelector('#effective').innerText = formatFreqWithComma(tunedText);
++
++      const dialElem = document.querySelector('#dial');
++      if (data.mode === "USB" || data.mode === "LSB") {
++        dialElem.style.display = "inline";
++        dialElem.innerText = "Reference: " + refText + bfoInfo;
++      } else {
++        dialElem.style.display = "none";
++      }
++
++      // ---- Station info ----
++      const nameInput = document.querySelector('input[name="name"]');
++      const commentInput = document.querySelector('textarea[name="comment"]');
++
++      if (!editingName) nameInput.value = data.name || "";
++      if (!editingComment) commentInput.value = data.comment || "";
++    })
++    .catch(err => console.error(err));
++}
++</script>
++)rawliteral";
+diff --git a/ats-mini/Station.cpp b/ats-mini/Station.cpp
+index fe08c3a..dc9b79d 100644
+--- a/ats-mini/Station.cpp
++++ b/ats-mini/Station.cpp
+@@ -3,11 +3,39 @@
+ #include "Utils.h"
+ #include "Menu.h"
+ #include "EIBI.h"
++#include <FS.h>
++using fs::File;
++
++#include <LittleFS.h>
++#include <ArduinoJson.h>
++
++#include "Station.h"
++StaticJsonDocument<12288> stationDoc;
++
++// my-station-name
++const char* getCurrentBandName();
+ 
+ // CB frequency range
+ #define MIN_CB_FREQUENCY 26060
+ #define MAX_CB_FREQUENCY 29665
+ 
++#define MAX_STATIONS 300
++
++typedef struct {
++  char band[4];   // "FM","AM","USB","LSB"
++  uint32_t freq;
++  char name[60];
++} StationEntry;
++
++
++static StationEntry stationCache[MAX_STATIONS];
++static int stationCount = 0;
++
++// my-station-name
++bool showStationName(const char *stationName, bool isLong);
++
++static uint32_t lastFreq = 0;
++
+ //
+ // Named frequencies, sorted by increasing frequency!
+ //
+@@ -42,14 +70,14 @@ static const char *cbChannelNumber[] =
+ //
+ const char *rdsProgramTypes[32] =
+ {
+-  0, "News", "Current Affairs", "Information",
++    0, "News", "Current Affairs", "Information",
+   "Sport", "Education", "Drama", "Culture",
+-  "Science", "Varied", "Pop Music", "Rock Music",
+-  "Easy Listening", "Light Classical", "Serious Classical", "Other Music",
+-  "Weather", "Finance", "Children's Program", "Social Affairs",
+-  "Religion", "Phone-In", "Travel", "Leisure",
+-  "Jazz Music", "Country Music", "National Music", "Oldies Music",
+-  "Folk Music", "Documentary", "TEST", "! ALERT !"
++    "Science", "Varied", "Pop Music", "Rock Music",
++    "Easy Listening", "Light Classical", "Serious Classical", "Other Music",
++    "Weather", "Finance", "Children's Program", "Social Affairs",
++    "Religion", "Phone-In", "Travel", "Leisure",
++    "Jazz Music", "Country Music", "National Music", "Oldies Music",
++    "Folk Music", "Documentary", "TEST", "! ALERT !"
+ };
+ 
+ const char *rbdsProgramTypes[32] =
+@@ -69,6 +97,116 @@ static char bufRadioText[100]   = "";
+ static char bufProgramInfo[100] = "";
+ static uint16_t piCode = 0x0000;
+ 
++void buildStationCache()
++{
++  stationCount = 0;
++
++  for (JsonPair bandKv : stationDoc.as<JsonObject>()) {
++    const char* band = bandKv.key().c_str();
++    JsonObject bandObj = bandKv.value().as<JsonObject>();
++    for (JsonPair kv : bandObj) {
++      if (stationCount >= MAX_STATIONS) break;
++      // frequency
++      stationCache[stationCount].freq =
++          strtoul(kv.key().c_str(), nullptr, 10);
++      // save band
++      strncpy(stationCache[stationCount].band, band, 3);
++      stationCache[stationCount].band[3] = '\0';
++      // station name
++      const char* name = kv.value()["name"] | "";
++      strncpy(stationCache[stationCount].name, name,
++              sizeof(stationCache[stationCount].name) - 1);
++      stationCache[stationCount].name[
++          sizeof(stationCache[stationCount].name) - 1] = '\0';
++      stationCount++;
++    }
++  }
++
++  Serial.printf("Station cache built: %d\n", stationCount);
++}
++
++const char* findNameByFreqCache(uint32_t freq, const char* band)
++{
++  for (int i = 0; i < stationCount; i++) {
++    if (stationCache[i].freq == freq &&
++        strcmp(stationCache[i].band, band) == 0)
++    {
++      return stationCache[i].name;
++    }
++  }
++  return nullptr;
++}
++
++void loadStationsOnce()
++{
++    fs::File f = LittleFS.open("/stations.json", "r");
++    if (!f) {
++        Serial.println("stations.json not found");
++        return;
++    }
++    DeserializationError err = deserializeJson(stationDoc, f);
++    f.close();
++    if (!err) {
++        buildStationCache();
++        Serial.println("Stations loaded");
++    }
++}
++
++
++// Call at freq select
++const char* findStationNameFast(uint32_t freq)
++{
++    // Hz
++    String key(freq);
++    JsonObject obj = stationDoc[key];
++    if (!obj.isNull()) {
++        return obj["name"] | "";
++    }
++    return nullptr;
++}
++
++// draw only at freq change
++void updateStationByFreq(uint32_t freq)
++{
++    if (freq == lastFreq) return;
++
++    const char* name = findStationNameFast(freq);
++    if (name && name[0]) {
++        showStationName(name,false);
++    }
++
++    lastFreq = freq;
++}
++
++const char* getStationName(uint32_t freq)
++{
++  static char nameBuf[64];
++  const char* band = getCurrentBandName();
++
++  if (!stationDoc.containsKey(band)) return "";
++
++  JsonObject bandObj = stationDoc[band];
++  String key = String(freq);
++
++  if (!bandObj.containsKey(key)) return "";
++
++  const char* name = bandObj[key]["name"];
++  if (!name) return "";
++
++  strncpy(nameBuf, name, sizeof(nameBuf) - 1);
++  nameBuf[sizeof(nameBuf) - 1] = '\0';
++
++  return nameBuf;
++}
++
++const char* getStationComment(uint32_t freq) {
++    String key = String(freq);
++    if (stationDoc.containsKey(key)) {
++        return stationDoc[key]["comment"] | "";
++    }
++    return "";
++}
++
+ const char *getStationName()
+ {
+   if(switchThemeEditor())
+@@ -101,7 +239,7 @@ void clearStationInfo()
+   piCode = 0x0000;
+ }
+ 
+-static bool showStationName(const char *stationName, bool isLong = false)
++bool showStationName(const char *stationName, bool isLong)
+ {
+   if(stationName && strcmp((isLong && bufStationName[0] == 0xFF) ? bufStationName + 1 : bufStationName, stationName))
+   {
+@@ -232,7 +370,7 @@ bool checkRds()
+ 
+   if(rx.getRdsReceived() && rx.getRdsSync() && rx.getRdsSyncFound())
+   {
+-    needRedraw |= (mode & RDS_PS) && showStationName(rx.getRdsStationName());
++    needRedraw |= (mode & RDS_PS) && showStationName(rx.getRdsStationName(),false);
+     needRedraw |= (mode & RDS_RT) && showRadioText(rx.getRdsVersionCode()? rx.getRdsText2B() : rx.getRdsText2A());
+     needRedraw |= (mode & RDS_PI) && showRdsPiCode(rx.getRdsPI());
+     needRedraw |= (mode & RDS_CT) && showRdsTime(rx.getRdsTime());
+@@ -272,6 +410,30 @@ static const char *findCBChannelByFreq(uint16_t freq)
+   return(buf);
+ }
+ 
++const char* findNameByFreqJSON(uint32_t freq) {
++    static char nameBuf[64];
++    nameBuf[0] = 0;
++
++    if (!LittleFS.exists("/stations.json")) return nameBuf;
++
++    fs::File f = LittleFS.open("/stations.json", "r");
++    if (!f) return nameBuf;
++
++    //StaticJsonDocument<2048> doc;
++    DeserializationError err = deserializeJson(stationDoc, f);
++    f.close();
++    if (err) return nameBuf;
++
++    String key = String(freq);
++    if (stationDoc.containsKey(key)) {
++        JsonObject st = stationDoc[key];
++        const char* n = st["name"] | "";
++        strncpy(nameBuf, n, sizeof(nameBuf));
++        nameBuf[sizeof(nameBuf)-1] = 0;
++    }
++    return nameBuf;
++}
++
+ static const char *findNameByFreq(uint16_t freq, const NamedFreq *db, uint16_t dbSize)
+ {
+   int r, l;
+@@ -287,6 +449,7 @@ static const char *findNameByFreq(uint16_t freq, const NamedFreq *db, uint16_t d
+   return(0);
+ }
+ 
++
+ static const char *findScheduleByFreq(uint16_t freq, bool periodic)
+ {
+   uint8_t hour, minute;
+@@ -335,35 +498,53 @@ bool identifyFrequency(uint16_t freq, bool periodic)
+   static uint16_t last_freq = 0;
+   static bool name_found = false;
+ 
+-  // RDS has priority on FM
+-  if(currentMode==FM) return(false);
+-
+   // Do not try to look up static names more than once for the same freq
+-  if(periodic && last_freq==freq && name_found) return(false);
++  if (periodic && last_freq == freq && name_found)
++    return false;
++
+   last_freq = freq;
+   name_found = false;
+ 
+   // For non-periodic calls the name will be found earlier
+-  if(!periodic)
++  if (!periodic)
+   {
+-    // Try list of named frequencies first
+-    name = findNameByFreq(freq, namedFrequencies, ITEM_COUNT(namedFrequencies));
+-    if(name)
+-    {
++    //
++    const char* n = findNameByFreqCache(freq, getCurrentBandName());
++    if (n && n[0] != 0) {
+       name_found = true;
+-      return(showStationName(name));
++      return showStationName(n, false);
++    }
++
++    // Try list of named frequencies
++    name = findNameByFreq(freq, namedFrequencies,
++                          ITEM_COUNT(namedFrequencies));
++    if (name) {
++      name_found = true;
++      return showStationName(name, false);
+     }
+ 
+     // Try CB channel names
+     name = findCBChannelByFreq(freq);
+-    if(name)
+-    {
++    if (name) {
+       name_found = true;
+-      return(showStationName(name));
++      return showStationName(name, false);
+     }
+   }
+ 
+   // Try EIBI schedule
+   name = findScheduleByFreq(freq, periodic);
+-  return(showStationName(name? name : "", true));
++  return showStationName(name ? name : "", true);
++}
++
++uint16_t getCurrentFrequency()
++{
++  return currentFrequency;
++}
++
++const char* getCurrentBandName()
++{
++    if (currentMode == FM)  return "FM";
++    if (currentMode == USB) return "USB";
++    if (currentMode == LSB) return "LSB";
++    return "AM";
+ }
+diff --git a/ats-mini/Station.h b/ats-mini/Station.h
+new file mode 100644
+index 0000000..c04e09a
+--- /dev/null
++++ b/ats-mini/Station.h
+@@ -0,0 +1,19 @@
++#pragma once
++#include <Arduino.h>
++#include <LittleFS.h>
++#include <ArduinoJson.h>
++
++void loadStations();
++const char* getStationName(uint32_t freq);
++const char* getStationComment(uint32_t freq);
++
++extern StaticJsonDocument<12288> stationDoc;
++
++void loadStationsOnce();
++void updateStationByFreq(uint32_t freq);
++const char* findNameByFreqCache(uint32_t freq);
++void buildStationCache();
++
++const char* getCurrentBandName();
++
++uint16_t getCurrentFrequency();
+diff --git a/ats-mini/ats-mini.ino b/ats-mini/ats-mini.ino
+index 331e4a4..2daa7fd 100644
+--- a/ats-mini/ats-mini.ino
++++ b/ats-mini/ats-mini.ino
+@@ -12,6 +12,12 @@
+ #include "Themes.h"
+ #include "Utils.h"
+ #include "EIBI.h"
++//
++// my-station-name
++//
++#include <FS.h>
++#include <LittleFS.h>
++#include "Station.h"
+ 
+ // SI473/5 and UI
+ #define MIN_ELAPSED_TIME         5  // 300
+@@ -239,6 +245,11 @@ void setup()
+ 
+   // Start Bluetooth LE, if necessary
+   bleInit(bleModeIdx);
++
++  //
++  // my-station-name
++  //
++  loadStationsOnce();
+ }
+ 
+ //
+@@ -685,6 +696,12 @@ void loop()
+   uint32_t currentTime = millis();
+   bool needRedraw = false;
+ 
++  //
++  // my-station-name
++  //
++  uint32_t freq = getCurrentFrequency();
++  updateStationByFreq(freq);
++
+   ButtonTracker::State pb1st = pb1.update(digitalRead(ENCODER_PUSH_BUTTON) == LOW);
+ 
+ #ifndef DISABLE_REMOTE
+diff --git a/ats-mini/sketch.yaml b/ats-mini/sketch.yaml
+index 8f5c964..5b497c2 100644
+--- a/ats-mini/sketch.yaml
++++ b/ats-mini/sketch.yaml
+@@ -12,6 +12,7 @@ profiles:
+       - NTPClient (3.2.1)
+       - NimBLE-Arduino (2.3.0)
+       - NuS-NimBLE-Serial (4.1.0)
++      - ArduinoJson (7.4.2)          ### my-station-name
+ 
+   esp32s3-qspi:
+     # If you change this line, change it in build.yml as well
+@@ -26,5 +27,6 @@ profiles:
+       - NTPClient (3.2.1)
+       - NimBLE-Arduino (2.3.0)
+       - NuS-NimBLE-Serial (4.1.0)
++      - ArduinoJson (7.4.2)          ### my-station-name
+ 
+ default_profile: esp32s3-ospi
