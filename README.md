@@ -8,10 +8,10 @@ This patch allows you to manually assign station names using the ATS-MINI web in
 
 ## Features
 
--When you tune a frequency with the ATS-MINI dial as usual, the frequency is synchronously displayed in the web browser.
--Enter station names and comments via the web browser.
--Station names are displayed on the ATS-MINI screen in two lines, separated by a comma.
--Station information is stored internally in JSON format.
+- When you tune a frequency with the ATS-MINI dial as usual, the frequency is synchronously displayed in the web browser.
+- Enter station names and comments via the web browser.
+- Station names are displayed on the ATS-MINI screen in two lines, separated by a comma.
+- Station information is stored internally in JSON format.
 
 ## How to apply this patch
 
