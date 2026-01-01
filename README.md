@@ -38,7 +38,7 @@ arduino-cli config set network.connection_timeout 1200s
 ## Disclaimer
 
 This patch is not an official feature of ATS-MINI.
-It is a personal modification created for educational and experimental purposes.
+It is a personal modification created for experimental purposes.
 
 All credit for the original project goes to the ATS-MINI author.
 
