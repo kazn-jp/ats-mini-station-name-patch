@@ -44,7 +44,7 @@ All credit for the original project goes to the ATS-MINI author.
 
 ---
 
-## Screenshots
+## Screenshots and Demo video
 
 ### ATS-MINI Screen
 <img src="images/ATS-Mini_screen.png" width="300">
