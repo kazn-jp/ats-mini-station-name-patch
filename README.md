@@ -52,3 +52,5 @@ All credit for the original project goes to the ATS-MINI author.
 ### Web UI
 <img src="images/Web_UI.png" width="300">
 
+### Demo video
+[![Demo Video](https://img.youtube.com/vi/gAheYQwOAIc/hqdefault.jpg)](https://youtube.com/shorts/gAheYQwOAIc)
