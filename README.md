@@ -12,6 +12,7 @@ This patch allows you to manually assign station names using the ATS-MINI web in
 - Enter station names and comments via the web browser.
 - Station names are displayed on the ATS-MINI screen in two lines, separated by a comma.
 - Station information is stored internally in JSON format.
+  The maximum number of station entries and the length of comments are not yet fully understood.
 
 ## How to apply this patch
 
