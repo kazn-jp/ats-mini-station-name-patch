@@ -17,10 +17,18 @@ This patch allows you to manually assign station names using the ATS-MINI web in
 
 This patch is based on ATS-MINI v2.30.
 
+### 1. Clone the original ATS-MINI repository
 ```bash
 git clone https://github.com/esp32-si4732/ats-mini.git
 cd ats-mini
+```
+### 2. Checkout the correct version
+```bash
 git checkout v2.30
+```
+### 3. Download and apply the patch
+```bash
+curl -LO https://raw.githubusercontent.com/kazn-jp/ats-mini-station-name-patch/main/my-station-name.patch
 git apply my-station-name.patch
 ```
 
