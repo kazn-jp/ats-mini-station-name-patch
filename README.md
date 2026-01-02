@@ -33,6 +33,8 @@ git apply my-station-name.patch
 ```
 
 ## Build
+The following command follows the official ATS-MINI development documentation
+and will compile and upload the firmware.
 ```bash
 arduino-cli compile --clean -e -p COM_PORT -u ats-mini
 ```
