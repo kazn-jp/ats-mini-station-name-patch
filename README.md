@@ -54,6 +54,11 @@ The author makes no guarantees regarding functionality, stability, or suitabilit
 
 All credit for the original project goes to the ATS-MINI author.
 
+### Known Issue
+
+If a station name is too long, the display may become corrupted or show garbled characters.
+
+The cause of this issue is currently unknown, and there is no fix available at this time.
 ---
 
 ## Screenshots and Demo video
