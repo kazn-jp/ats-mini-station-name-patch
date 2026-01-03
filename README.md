@@ -12,7 +12,7 @@ This patch allows you to manually assign station names using the ATS-MINI web in
 - Enter station names and comments via the web browser.
 - Station names are displayed on the ATS-MINI screen on two lines, with a line break at the comma.
 - Station information is stored internally in JSON format.
-  The maximum number of station entries and the length of comments are not yet fully understood.
+The maximum number of station entries and the length of comments are not yet fully understood.
 
 ## How to apply this patch
 
@@ -48,9 +48,9 @@ arduino-cli config set network.connection_timeout 1200s
 ```
 
 ## Disclaimer
+This patch is not an official feature of ATS-MINI. It is a personal modification created for experimental purposes and is provided **as is**, without any warranty.
 
-This patch is not an official feature of ATS-MINI.
-It is a personal modification created for experimental purposes.
+The author makes no guarantees regarding functionality, stability, or suitability for any purpose, and assumes no responsibility for any damage or data loss that may result from its use.
 
 All credit for the original project goes to the ATS-MINI author.
 
